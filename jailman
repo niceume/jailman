@@ -1,0 +1,20 @@
+#!/bin/sh
+#|
+exec gosh -r7 -- $0 "$@"
+|#
+
+(import (scheme base)
+        (scheme write)
+        (srfi 112)
+        (gauche base)
+        (gauche version))
+
+(let ((minimal-version "0.9.15"))
+  (when (version<?
+         (implementation-version)
+         minimal-version)
+    (display #"Error: invalid Gauche version\n")
+    (display #"The version of Gauche should be ~minimal-version or later \n")
+    (exit 1)))
+
+(include "./jailman-main.scm")
