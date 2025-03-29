@@ -244,9 +244,12 @@ running. Unlike jexec, login shell session is started.
 
 - =--name <name>=
   - This option specifies the jail to log in.
+- =--user <user>=
+  - This option allows login by the specified user.
 
 #+BEGIN_SRC sh
 jailman login --name jail01
+jailman login --name jail01 --user admin
 #+END_SRC
 
 *** list
