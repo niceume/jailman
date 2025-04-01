@@ -11,7 +11,8 @@
       (begin
         (display (alist-ref params 'interface-addr-ip4)))
       (begin
-        (display (alist-ref params 'bridge-interface)) (display " ")
+        (display (if (alist-ref params 'vnet) "vnet" "non-vnet" )) (display " ")
+        (display (alist-ref params 'use-bridge)) (display " ")
         (display (alist-ref params 'vnet-epaira-ip4)) (display " ")
         (display (alist-ref params 'vnet-epairb-ip4))))
   (display ")"))

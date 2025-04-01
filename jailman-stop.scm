@@ -93,8 +93,9 @@
                               (display "stopping jail failed\n")
                               (exit 1))
                             (begin
-                              (do-process
-                               `(/sbin/ifconfig ,bridge deletem ,epaira))
+                              (when bridge
+                                (do-process
+                                 `(/sbin/ifconfig ,bridge deletem ,epaira)))
                               (do-process
                                `(/sbin/ifconfig ,epaira destroy))
                               (do-process

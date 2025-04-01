@@ -34,7 +34,7 @@
     (devfs-ruleset . "devfs-ruleset=s")
     (interface-addr-ip4 . "interface-addr-ip4=s")
     (vnet . "vnet")
-    (bridge-interface . "bridge-interface=s")
+    (use-bridge . "use-bridge=s")
     (vnet-epaira-ip4 . "vnet-epaira-ip4=s")
     (vnet-epairb-ip4 . "vnet-epairb-ip4=s")))
 
@@ -48,7 +48,7 @@
            (devfs-ruleset (alist-ref *option-alist* 'devfs-ruleset))
            (interface-addr-ip4 (alist-ref *option-alist* 'interface-addr-ip4))
            (vnet (alist-ref *option-alist* 'vnet))
-           (bridge-interface (alist-ref *option-alist* 'bridge-interface))
+           (use-bridge (alist-ref *option-alist* 'use-bridge))
            (vnet-epaira-ip4 (alist-ref *option-alist* 'vnet-epaira-ip4))
            (vnet-epairb-ip4 (alist-ref *option-alist* 'vnet-epairb-ip4))
            (else (option rest cont)
@@ -69,7 +69,8 @@
                   (when interface-addr-ip4
                     (validate-interface-addr-ip4 interface-addr-ip4)))
                 (begin
-                  (confirm-bridge-interface bridge-interface)
+                  (when use-bridge
+                    (validate-bridge-interface use-bridge))
                   (validate-vnet-options
                    vnet vnet-epaira-ip4 vnet-epairb-ip4)))
             (confirm-config-does-not-exist name)
@@ -103,7 +104,7 @@
           (display "Config is being created")(newline)
           (let ((setting-alist
                  (names->alist hostname devfs-ruleset interface-addr-ip4
-                               vnet bridge-interface
+                               vnet use-bridge
                                vnet-epaira-ip4 vnet-epairb-ip4)))
             (generate-jailman-setting name setting-alist))
           (display "Finished")(newline)
@@ -153,9 +154,9 @@
             (display "       check /etc/devfs.rules and /etc/defaults/devfs.rules\n")
             (exit 1))))))
 
-(define (confirm-bridge-interface interface)
+(define (validate-bridge-interface interface)
   (unless (regexp-matches? #/^bridge\d+/ interface)
-    (display "ERROR: bridge interface needs to be specified\n")
+    (display "ERROR: inteface not bridge is specified\n")
     (exit 1)))
 
 (define (validate-interface-addr-ip4 interface-addr-ip4)
@@ -182,8 +183,8 @@
 
 (define (validate-vnet-options vnet vnet-epaira-ip4 vnet-epairb-ip4)
   (when vnet
-    (unless (and vnet-epaira-ip4 vnet-epairb-ip4)
-      (display "ip4 address/sbunet must be specified for epaira and epairb\n")
+    (unless vnet-epairb-ip4
+      (display "ip4 address/subnet must be specified for epairb\n")
       (exit 1))
     (when vnet-epaira-ip4
       (validate-vnet-ip4 vnet-epaira-ip4))

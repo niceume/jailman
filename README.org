@@ -33,8 +33,29 @@ Internet -- em0
 
 *** vnet jail
 
+(e.g.) assuming host's network interfacde is em0.
+
+**** Routing (recommended way)
+
 #+BEGIN_EXAMPLE
-# (e.g.) assuming host's network interfacde is em0
+# 
+L2 Level
+             ----- Host -----           ---- Jail -----
+             |              |           |             |
+Internet -- em0            epair0a--epair0b           |
+             |              |           |             |
+             |              |           |             |
+             ----------------           ---------------
+L3 Level
+    NetworkA --- Routing ----- NetworkB
+ 203.0.113.11/24     10.10.10.1/24 - 10.10.10.11/24 
+#+END_EXAMPLE
+
+
+**** Bridging (optional way)
+
+#+BEGIN_EXAMPLE
+# 
 L2 Level
              ----- Host -----           ---- Jail -----
              |              |           |             |
@@ -43,10 +64,9 @@ Internet -- em0 ----+----- epair0a--epair0b           |
              |   bridge0    |           |             |
              ----------------           ---------------
 L3 Level
-    NetworkA ---------------  L3 NetworkB
-                      10.10.10.1/24 - 10.10.10.11/24 
+    NetworkA ----------------- NetworkB
+             203.0.113.11/24         203.0.113.21/24 
 #+END_EXAMPLE
-
 
 
 ** Prerequisite
@@ -54,30 +74,18 @@ L3 Level
 - Gauche Scheme (>= 0.9.15)
 
 
-*** For vnet jails
+*** For vnet jails with routing (recommended)
 
-- Bridge interface on host
-- Allow ip forwarding on host
+- Allow ip forwarding on host (gateway_enable)
+- Instruct ip forwarding on host (pf)
+
+You need to explicitly allow and instruct packet forwarding from jail
+internal network to external interface as follows by setting rc.conf
+and pf.conf.
 
 #+BEGIN_EXAMPLE
-# (e.g.)
-# assuming host's network interfacde is em0
-# prepare new bridge interface and add em0 to it.
-# 
 # /etc/rc.conf
-cloned_interfaces="bridge0"
-ifconfig_bridge0="addm em0 up"
-
 gateway_enable="YES"
-#+END_EXAMPLE
-
-If your host enables pf (packat filtering), it prevents packet
-forwarding even if gateway_enable="YES" is set. In this case, you need
-to explicitly forward packet from jail internal network to external
-interface as follows by setting pf.conf.
-
-#+BEGIN_EXAMPLE
-# /etc/rc.conf
 pf_enable="YES"
 #+END_EXAMPLE
 
@@ -88,7 +96,42 @@ jail_net = "10.10.10.0/24"
 nat on $ext_if from $jail_net to any -> ($ext_if)
 #+END_EXAMPLE
 
-  
+
+*** For vnet jails with bridging (optional)
+
+- Bridge interface on host
+
+#+BEGIN_EXAMPLE
+# (e.g.)
+# assuming host's network interfacde is em0
+# prepare new bridge interface and add em0 to it.
+
+# /etc/rc.conf
+cloned_interfaces="bridge0"
+ifconfig_bridge0="addm em0 up"
+#+END_EXAMPLE
+
+- Bridge interface that has IP on host
+  - In the following example, em0 is assigned by DHCP.
+  - bridge0 uses em0's IP and remove the IP from em0.
+- Bridge host forwards packets at L3 level.
+
+Anyway, it is safe to have only one of the bridge and/or added memeber
+interfaces has IP address to avoid mltiple ARP reply issue.
+
+#+BEGIN_EXAMPLE
+# (e.g.)
+# assign IP to bridge interface
+
+# /etc/rc.conf
+gateway_enable="YES" # allow L3 packet forwarding
+cloned_interfaces="bridge0"
+ifconfig_bridge0="addm em0 up"
+ifconfig_bridge0="addm em0 SYNCDHCP" # use ip assigned to em0 for bridge0
+ifconfig_em0="up" # remove ip from em0
+#+END_EXAMPLE
+
+
 ** Installation
 
 Clone this repository, give executable permission to the file named
@@ -179,16 +222,22 @@ For non-vnet jails
   - format: <interface>|<ipv4> or <interface>|<ipv4>/mask
     (e.g.) em0|192.168.11.11
 
-For vnet jails
+For vnet jails without bridge (recommended way for vnet jail)
 
 - =--vnet= is required
-- =--bridge-interface <bridge-interface>= is required.
-  - format: bridgeN (e.g.) bridge0
 - =--vnet-epaira-ip4 <addr/mask>= is required.
   - format: <ipv4>/<netmask> (e.g.) 10.10.10.1/24 
 - =--vnet-epairb-ip4 <addr/mask>= is required.
   - format: <ipv4>/<netmask> (e.g.) 10.10.10.101/24
 
+For vnet jails using bridge (optional way)
+
+- =--vnet= is required
+- =--use-bridge <bridge-interface>= is required.
+  - format: bridgeN (e.g.) bridge0
+- =--vnet-epairb-ip4 <addr/mask>= is required.
+  - format: <ipv4>/<netmask> (e.g.) 203.0.113.21/24
+  - this should belong to the same network of brdige interface.
 
 #+BEGIN_SRC sh
 # non-vnet jail
@@ -196,8 +245,12 @@ jailman create --name jail01 --version 14.2-RELEASE --hostname jail01
 
 # vnet jail
 jailman create --name jailvnet01 --version 14.2-RELEASE --hostname jailvnet01 \
-        --vnet --bridge-interface bridge0 \
-        --vnet-epaira-ip4 10.10.10.1/24 --vnet-epairb-ip4 10.10.10.11/24
+        --vnet --vnet-epaira-ip4 10.10.10.1/24 --vnet-epairb-ip4 10.10.10.11/24
+
+# vnet jail using bridge (optional)
+# (please make sure eparib IP belongs to the same network as the bridge's or its member's network
+jailman create --name jailvnet02 --version 14.2-RELEASE --hostname jailvnet01 \
+        --vnet --use-bridge bridge0 --vnet-epairb-ip4 203.0.113.21/24
 #+END_SRC
 
 

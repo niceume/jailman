@@ -1,4 +1,5 @@
-(import (gauche parseopt))
+(import (gauche parseopt) (gauche process)
+        (scheme regex) (srfi 152))
 
 (define (jailman-start args)
   (let1 unknown-opts '()
@@ -77,14 +78,17 @@
                   ))
               (begin
             (let*
-              ((bridge (alist-ref params 'bridge-interface))
+              ((bridge (alist-ref params 'use-bridge))
                (bridge-id
                 (if bridge
-                    (car (regexp-extract #/\d+/ bridge))
-                    (error "ERROR: bridge interface without number specified")))
-               (jail-bridge-interface
-                (string-append
-                 "interface=" bridge))
+                    (or (car (regexp-extract #/\d+/ bridge))
+                        (error "ERROR: bridge interface without number specified"))
+                    #f ))
+               (jail-use-bridge
+                (if bridge
+                    (string-append
+                     "interface=" bridge)
+                    #f))
                (epaira
                 (process-output->string
                  '(/sbin/ifconfig epair create)
@@ -101,16 +105,43 @@
                (vnet-epairb-ip4
                 (alist-ref params 'vnet-epairb-ip4))
                (vnet-gateway-ip4
-                (car
-                 (regexp-extract #/\d+\.\d+\.\d+\.\d+/ vnet-epaira-ip4)))
+                (if (not vnet-epaira-ip4)
+                    (let ((matched
+                           (regexp-search-line
+                            #/^\s*inet\s+(\d+\.\d+\.\d+\.\d+)/
+                            (process-output->string-list
+                             `(/sbin/ifconfig ,(string->symbol bridge))))))
+                      (if matched
+                          (regexp-match-submatch matched 1)
+                          (begin
+                            (display "bridge interface is not assigned an IP address\n")
+                            (display "try to use default route on host for jail\n")
+                            (let ((matched-default-route
+                                   (regexp-search-line
+                                    #/^default\s+(\d+\.\d+\.\d+\.\d+)/
+                                    (process-output->string-list
+                                     `(netstat -rn)))))
+                              (if matched-default-route
+                                  (regexp-match-submatch
+                                   matched-default-route 1)
+                                  (error "default route on host cannot be found."))))))
+                    (car
+                     (regexp-extract #/\d+\.\d+\.\d+\.\d+/ vnet-epaira-ip4))))
                (jail-exec-prestart
                 (string-append
                  "exec.prestart="
-                 #"/sbin/ifconfig ~epaira up && "
-                 (when bridge
-                   #"/sbin/ifconfig ~bridge addm ~epaira up && " )
-                 #"/sbin/ifconfig ~epaira ~vnet-epaira-ip4 up;"
-                 ))
+                 (string-join-without-false
+                  (list
+                   #"/sbin/ifconfig ~epaira up"
+                   (if bridge
+                       #"/sbin/ifconfig ~bridge addm ~epaira up"
+                       #f )
+                   (if vnet-epaira-ip4
+                       #"/sbin/ifconfig ~epaira ~vnet-epaira-ip4 up"
+                       #f )
+                   )
+                  " && ")
+                 ";"))
                (jail-exec-start
                 (string-append
                  "exec.start="
@@ -124,7 +155,7 @@
                       jail-name
                       jail-hostname
                       jail-path
-                      jail-bridge-interface
+                      jail-use-bridge
                       jail-exec-prestart
                       jail-exec-start
                       jail-allow-raw-sockets
@@ -151,3 +182,20 @@
       (lambda (out)
         (display ";; -*- mode: scheme -*-\n" out)
         (write running-info-alist out)))))
+
+(define (regexp-search-line regexp lines)
+  (unless (is-a? lines <list>)
+    (error "lines need to be a list"))
+  (cond
+   ((null? lines) #f)
+   (else
+    (let ((matched
+           (regexp-search regexp (car lines))))
+      (if matched
+          matched
+          (regexp-search-line regexp (cdr lines)))))))
+
+(define (string-join-without-false lst delim)
+  (string-join
+   (filter (lambda (x) x) lst)
+   delim))
